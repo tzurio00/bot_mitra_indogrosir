@@ -1,4 +1,4 @@
-const { Telegraf, session } = require('telegraf');
+const { Telegraf } = require('telegraf');
 
 const axios = require('axios');
 const path = require("path");
@@ -39,12 +39,12 @@ bot.command('password', async (ctx) => {
     let payload = { email, password};
   
     let res = await axios.post(`${url}/api/otp/user`, payload);
+    console.log(res);
     let data = res.data;
   
     if(!data){
       return ctx.reply(`Username atau password anda salah!`)
     }
-
     user_id = data.user.id
     user_token = data.token;
 
@@ -66,10 +66,24 @@ bot.command('menu1', async(ctx) =>{
     if(!user_token){
       return ctx.reply(`Anda belum melakukan login ke Bot Mitra Indogrosir!`);
     }
+
+    // const response = await fetch(`${url}/api/otp/generate/${user_id}`, {
+    //   method: "GET",
+    //   headers: {
+    //     'Authorization' : user_token,
+    //   }
+    // })
+  
+    // if (!response.ok) {
+    //   throw new Error(`Request failed with status ${reponse.status}`)
+    // }
+    // console.log("Request successful!")
   
     let res = await axios.get(`${url}/api/otp/generate/${user_id}`, { 
       headers: {
-        'Authorization' : user_token.toString()
+        "Authorization" : user_token,
+        "Content-Type" : 'application/json',
+        "Accept" : 'application/json'
       }});
 
     console.log(res);
