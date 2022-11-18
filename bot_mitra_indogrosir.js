@@ -1,5 +1,6 @@
 const { Telegraf } = require('telegraf');
 
+const superagent = require('superagent');
 const axios = require('axios');
 const path = require("path");
 const dotenv = require('dotenv').config({
@@ -9,11 +10,15 @@ const dotenv = require('dotenv').config({
 const url = process.env.URL;
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-let user_id,user_token, email = null;
+let user = {};
 
 bot.start((ctx) => {
-    ctx.reply(`Silahkan input email dengan command '/email'`)
+    ctx.reply(`Selamat datang di Bot Indogrosir!\nUntuk mengetahui command-command yang ada, silahkan gunakan command '/help'`)
 })
+
+bot.command('help',async (ctx) =>{
+    ctx.reply(`List command untuk Bot Indogrosir\n1. '/menu1' : Untuk generate OTP yang akan digunakan untuk CMS Mitra Indogrosir.\n 2. '/logout' : Untuk logout dari Bot\nSilahkan login terlebih dahulu untuk menggunakan command diatas dengan cara \n'/email email_anda' dan '/password password_anda'`)
+});
 
 bot.command('email', async (ctx) => {
   try{
@@ -24,6 +29,8 @@ bot.command('email', async (ctx) => {
     if(!email.match(format)){
       return ctx.reply(`Format email tidak valid!`);
     }     
+
+    if (!user.email) user.email = email;
     
     ctx.reply(`Silahkan input password dengan command '/password'`);
   }catch(err){
@@ -33,22 +40,65 @@ bot.command('email', async (ctx) => {
 
 bot.command('password', async (ctx) => {
   try{
+    let password = ctx.message.text.slice(9).replace(/\s/g, "");
+    if (!user.password) user.password = password;
 
-    let password = (ctx.message.text.slice(9)).replace(/\s/g, '');
+    let payload = { email, password };
 
-    let payload = { email, password};
-  
-    let res = await axios.post(`${url}/api/otp/user`, payload);
-    console.log(res);
-    let data = res.data;
-  
-    if(!data){
-      return ctx.reply(`Username atau password anda salah!`)
+    let {data} = await axios.post(`${url}/api/otp/user`, payload);
+
+    user.id = data.user.id;
+    user.token = data.token;
+
+    if (!data) {
+      return ctx.reply(`Username atau password anda salah!`);
+    }else{
+      return ctx.reply(`Login berhasil`);
     }
-    user_id = data.user.id
-    user_token = data.token;
+  }catch(err){
+    console.log(err);
+    if(err.response.status == 401){
+      return ctx.reply(`Akun anda unauthorized!`);
+    }else if(err.response.status == 400){
+      return ctx.reply(`Username atau password anda salah!`);
+    }
+  }
+});
 
-    console.log(data);
+bot.command('menu1', async(ctx) =>{ 
+  try{
+    console.log(user.token);
+
+    if(!user.token){
+      return ctx.reply(`Anda belum melakukan login ke Bot Mitra Indogrosir!`);
+    }
+  
+    let {data} =await  axios
+    .get(`${url}/api/otp/generate/${user.id}`, {
+      headers: {
+        authorization: user.token,
+      },
+    })  
+    ctx.reply(`OTP Anda : ${data.otp} \nSilahkan gunakan OTP pada CMS Mitra Indogrosir!`);
+
+    let counter= 60;
+    
+    // const {message_id} = await ctx.reply(`OTP berlaku selama ${counter} detik`);
+    let {message_id} = await ctx.telegram.sendMessage(ctx.message.chat.id,
+      `OTP berlaku selama ${counter} detik`
+    )
+    while(counter != 0){
+      counter--
+
+      await new Promise(r => setTimeout(r,1000))
+
+      await ctx.telegram.editMessageText(ctx.message.chat.id, message_id,undefined, `OTP berlaku selama ${counter} detik`);
+      if(counter == 0){
+        return await ctx.telegram.editMessageText(ctx.message.chat.id, message_id,undefined,
+          `OTP telah expired!`
+        )
+      }
+    }
   }catch(err){
     console.log(err);
     if(err.response.status == 401){
@@ -57,46 +107,10 @@ bot.command('password', async (ctx) => {
   }
 });
 
-bot.command('menu1', async(ctx) =>{ 
-  try{
-    console.log(typeof(user_id))
-    console.log(user_id);
-    console.log(user_token)
-
-    if(!user_token){
-      return ctx.reply(`Anda belum melakukan login ke Bot Mitra Indogrosir!`);
-    }
-
-    // const response = await fetch(`${url}/api/otp/generate/${user_id}`, {
-    //   method: "GET",
-    //   headers: {
-    //     'Authorization' : user_token,
-    //   }
-    // })
-  
-    // if (!response.ok) {
-    //   throw new Error(`Request failed with status ${reponse.status}`)
-    // }
-    // console.log("Request successful!")
-  
-    let res = await axios.get(`${url}/api/otp/generate/${user_id}`, { 
-      headers: {
-        "Authorization" : user_token,
-        "Content-Type" : 'application/json',
-        "Accept" : 'application/json'
-      }});
-
-    console.log(res);
-  
-    let data = res.data;
-  
-    await ctx.reply(`OTP Anda : ${data.otp} \nSilahkan gunakan OTP pada CMS Mitra Indogrosir!`);
-  }catch(err){
-    console.log(err);
-    if(err.response.status == 401){
-      return ctx.reply(`Akun anda unauthorized!`);
-    }
-  }
+bot.command('logout', async(ctx) =>{ 
+    if(!user.token)return ctx.reply(`Anda belum melakukan login ke Bot Mitra Indogrosir!`);
+    user = {}
+    return ctx.reply(`Logout berhasil!`);
 });
 
 bot.launch();
